@@ -1,0 +1,193 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+	.lgd {
+		fill: antiquewhite;
+	}
+	.lgd-hover {
+		fill: lightblue;
+	}
+	.lgd-click {
+		fill: steelblue;
+	}
+	.line {
+		fill: none;
+		stroke: lightcoral;
+		stroke-width: 2px;
+		rendering: crispEdges;
+		pointer-events: none;
+	}
+	#chart-title {
+		font: bold 13pt sans-serif;
+		padding-bottom: 0.2em;
+	}
+	#chart-subtitle {
+		font: 10pt sans-serif;
+	}
+	.grid line {
+		stroke: lightgrey;
+		stroke-opacity: 0.8;
+		stroke-dasharray: 2, 2;
+	}
+	.grid path {
+		stroke: none;
+	}
+	.bar {
+		fill: #ffff33;
+	}	
+</style>
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<script>
+	var draw = function(files) {
+		
+		var map_data = files[0],
+			yellow_cars = files[1];
+		
+		map_svg.selectAll("path.lgd")
+			.data(map_data.features)
+		  .enter().append("path")
+			.attr("class", "lgd")
+			.attr("id", d => d.properties.LGDCode)
+			.attr("fill", "none")
+			.attr('d', path)
+			.on("mouseover", function() {
+				d3.select(this).classed("lgd-hover", true);
+			})
+			.on("mouseout", function() {
+				d3.select(this).classed("lgd-hover", false);
+			})
+			.on("click", function() {
+				if (d3.select(this).classed("lgd-click")) {
+					draw_bars("N92000002");
+					
+					d3.select(this).classed("lgd-click", false);
+				} else {
+					d3.selectAll(".lgd-click").classed("lgd-click", false);
+					
+					draw_bars(d3.select(this).attr("id"));
+					
+					d3.select(this).classed("lgd-click", true);
+				}
+				
+			});
+		
+		yellow_cars.forEach(function(d) {
+			d.year = new Date(d.year, 0);
+			d["count"] = +d["count"];
+			d.prop = +d.prop;
+		});
+		
+		var domain_year = d3.map(yellow_cars, d => d.year).keys().map(d => new Date(d)),
+			domain_y = [0, d3.max(yellow_cars, d => d["count"])];
+		
+		var scale_y = d3.scaleLinear()
+			.domain(domain_y)
+			.range([height - margin.bottom, margin.top])
+			.nice();
+		
+		var ni_data = yellow_cars.filter(d => d.lgd_code === "N92000002");
+
+		var axis_y = d3.axisLeft()
+			.scale(scale_y)
+			.ticks(5)
+			.tickSize(-width + margin.left + margin.right)
+			.tickFormat(d3.format(","));
+
+		var scale_year = d3.scaleBand()
+			.domain(domain_year)
+			.range([margin.left, width - margin.right])
+			.padding(0.1);
+				
+		var axis_year = d3.axisBottom()
+			.scale(scale_year)
+			.tickFormat(d3.timeFormat("%Y"));
+		
+		var svg_axis_y = chart_svg.append("g")
+			.attr("class", "grid")
+			.attr("transform",
+				`translate(${margin.left}, 0)`)
+		    .call(axis_y);
+		
+		chart_svg.append("g")
+			.attr("transform",
+				`translate(0, ${height - margin.bottom})`)
+			.call(axis_year);
+		
+		chart_svg.selectAll(".bar")
+		  .data(ni_data).enter()
+			.append("rect")
+			.attr("class", "bar")
+			.attr("x", d => scale_year(d.year))
+			.attr("y", d => scale_y(d["count"]))
+			.attr("width", scale_year.bandwidth())
+			.attr("height", d => (height - margin.bottom - scale_y(d["count"])));
+		
+		var draw_bars = function(lgd) {
+			new_data = yellow_cars.filter(d => d.lgd_code === lgd);
+			
+			d3.select("#chart-title").text(new_data[0].lgd_name);
+			
+			domain_count = [0, d3.max(new_data, d => d["count"])];
+			
+			scale_y.domain(domain_count);
+			
+			svg_axis_y.transition().duration(750)
+				.call(axis_y);
+			
+			chart_svg.selectAll(".bar")
+				.data(new_data)
+				.transition()
+				.duration(750)
+				.attr("y", d => scale_y(d["count"]))
+				.attr("height", d => (height - margin.bottom - scale_y(d["count"])));
+		};
+		       
+	}
+</script>
+</head>
+  
+<body>
+<div id="chart-title">Northern Ireland</div>
+<div id="chart-subtitle">Yellow car registrations, 2015 - 2018</div>
+<div id="canvas">
+</div>
+<script>
+    var width = 500,
+        height = 400,
+		margin = {top: 50, right: 50, bottom: 50, left: 80};
+    
+    var projection = d3.geoAlbers()
+        .center([-2.2, 54.7])
+        .rotate([4.4, 0])
+        .parallels([50, 60])
+        .scale(14500)
+        .translate([width / 2, height / 2]);
+	
+    var path = d3.geoPath()
+        .projection(projection);
+    
+	var canvas_svg = d3.select("#canvas")
+		.append("svg")
+		.attr("height", height)
+		.attr("width", 2 * width);
+	
+    var map_svg = canvas_svg.append("g")
+		.attr("id", "map");
+	
+	var chart_svg = canvas_svg.append("g")
+		.attr("id", "chart")
+		.attr("transform", `translate(${width}, 0)`);
+			
+	var promises = [];
+	
+	promises.push(d3.json("data/lgd_clean.geojson"));
+	promises.push(d3.csv("data/yellow_cars.csv"));
+	
+	Promise.all(promises).then(draw);
+    
+</script>
+</body>
+</html>
+
